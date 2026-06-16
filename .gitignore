@@ -1,0 +1,23 @@
+# ── Dependencias ──
+/node_modules
+
+# ── Entorno (NUNCA subir segredos) ──
+.env
+.env.local
+.env.*.local
+.fake_env
+
+# ── Logs ──
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ── Editor / SO ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── Probas / scratch locais ──
+test_mapa.html
