@@ -1624,6 +1624,10 @@ app.get('/relacions/tipos', (req, res) => {
     tipos: Object.entries(NOMES_RELACIONS).map(([id, nomes]) => ({ id, ...nomes }))
   })
 })
+// ── Niveis de usuario (fonte única para o frontend) ──
+app.get('/niveis', (req, res) => {
+  res.json({ niveis: NIVEIS_USUARIO })
+})
 // ── FIN: rutas_relacions ─────────────────────────────
 
 // ── INICIO: rutas_journeys ───────────────────────────
