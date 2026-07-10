@@ -49,10 +49,22 @@ const ROLES_PERSONAXE_VALIDOS = [
   'explorador', 'sabio', 'construtor', 'coidador'
 ]
 //Cursos
-const CURSOS_VALIDOS = [
-  '5prim','6prim','1eso','2eso','3eso','4eso',
-  '1bach','2bach','fpbasica','fpmedio','fpsup','outro'
+//Cursos — fonte única (o frontend consome GET /cursos)
+const CURSOS = [
+  { id: '5prim',    label: '5º Primaria',      nivel: 'primary',   etapa: 'Primaria'    },
+  { id: '6prim',    label: '6º Primaria',      nivel: 'primary',   etapa: 'Primaria'    },
+  { id: '1eso',     label: '1º ESO',           nivel: 'primary',   etapa: 'ESO'         },
+  { id: '2eso',     label: '2º ESO',           nivel: 'primary',   etapa: 'ESO'         },
+  { id: '3eso',     label: '3º ESO',           nivel: 'secondary', etapa: 'ESO'         },
+  { id: '4eso',     label: '4º ESO',           nivel: 'secondary', etapa: 'ESO'         },
+  { id: '1bach',    label: '1º Bacharelato',   nivel: 'expert',    etapa: 'Bacharelato' },
+  { id: '2bach',    label: '2º Bacharelato',   nivel: 'expert',    etapa: 'Bacharelato' },
+  { id: 'fpbasica', label: 'FP Básica',        nivel: 'secondary', etapa: 'FP'          },
+  { id: 'fpmedio',  label: 'FP Grao Medio',    nivel: 'expert',    etapa: 'FP'          },
+  { id: 'fpsup',    label: 'FP Grao Superior', nivel: 'expert',    etapa: 'FP'          },
+  { id: 'outro',    label: 'Outro',            nivel: 'primary',   etapa: 'Outro'       },
 ]
+const CURSOS_VALIDOS = CURSOS.map(c => c.id)
 //
 // ── INICIO: nomes_relacions ──────────────────────────
 const NOMES_RELACIONS = {
@@ -1627,6 +1639,14 @@ app.get('/relacions/tipos', (req, res) => {
 // ── Niveis de usuario (fonte única para o frontend) ──
 app.get('/niveis', (req, res) => {
   res.json({ niveis: NIVEIS_USUARIO })
+})
+// ── Cursos e roles (fonte única para o frontend) ──
+app.get('/cursos', (req, res) => {
+  res.json({ cursos: CURSOS })
+})
+
+app.get('/roles', (req, res) => {
+  res.json({ roles: ROLES_PERSONAXE_VALIDOS })
 })
 // ── FIN: rutas_relacions ─────────────────────────────
 
