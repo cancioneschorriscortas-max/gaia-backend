@@ -1070,7 +1070,7 @@ app.get('/nodos', async (req, res) => {
     const result = await session.run('MATCH (n:Node) RETURN n')
     const nodos = result.records.map(record => {
       const n = record.get('n').properties
-      return {
+     return {
         id:         n.id,
         label:      n.label_gl,
         type:       n.type     || 'concept',
@@ -1078,7 +1078,8 @@ app.get('/nodos', async (req, res) => {
         relevance:  n.relevance || 'medium',
         difficulty: n.difficulty,
         autor:      n.autor    || '',
-        centro:     n.centro   || ''
+        centro:     n.centro   || '',
+        universo:   n.universo || 'gaia'
       }
     })
     res.json({ total: nodos.length, nodos })
@@ -1323,7 +1324,8 @@ app.post('/nodo', verificarJWT, [
     let createFields = `id: $id, label: $label_gl,
                         type: $type, status: $status,
                         relevance: $relevance, difficulty: $difficulty,
-                        autor: $autor, centro: $centro`
+                        autor: $autor, centro: $centro,
+                            universo: $universo`
     const params = {
       id,
       label_gl:   req.body.label_gl   || '',
@@ -1331,7 +1333,7 @@ app.post('/nodo', verificarJWT, [
       status:     req.body.status     || 'draft',
       relevance:  req.body.relevance  || 'medium',
       difficulty: req.body.difficulty || 'primary',
-      autor, centro
+      autor, centro,universo:   nodo.universo || 'gaia'
     }
     idiomas.forEach(i => {
       createFields += `, label_${i}: $label_${i}`
