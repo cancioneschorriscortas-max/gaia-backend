@@ -130,7 +130,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(200)
   next()
 })
-app.use(express.json({ limit: '100kb' }))
+app.use(express.json({ limit: '20mb' }))
 // ── FIN: helmet_e_cors ───────────────────────────────
 
 // ── INICIO: rate_limiting ────────────────────────────
@@ -1070,7 +1070,7 @@ app.get('/nodos', async (req, res) => {
     const result = await session.run('MATCH (n:Node) RETURN n')
     const nodos = result.records.map(record => {
       const n = record.get('n').properties
-     return {
+   return {
         id:         n.id,
         label:      n.label_gl,
         type:       n.type     || 'concept',
@@ -1333,7 +1333,8 @@ app.post('/nodo', verificarJWT, [
       status:     req.body.status     || 'draft',
       relevance:  req.body.relevance  || 'medium',
       difficulty: req.body.difficulty || 'primary',
-      autor, centro,universo:   nodo.universo || 'gaia'
+    autor, centro,
+      universo:   req.body.universo || 'gaia'
     }
     idiomas.forEach(i => {
       createFields += `, label_${i}: $label_${i}`
@@ -2008,10 +2009,11 @@ app.post('/import', verificarJWT, soProfesor, [
           resultado.erros.push({ id, motivo: 'Xa existe' }); continue
         }
         const idiomas = await getIdiomasActivos(session)
-        let createFields = `id: $id, label: $label_gl,
+       let createFields = `id: $id, label: $label_gl,
                             type: $type, status: $status,
                             relevance: $relevance, difficulty: $difficulty,
-                            autor: $autor, centro: $centro`
+                            autor: $autor, centro: $centro,
+                            universo: $universo`
         const params = {
           id,
           label_gl:   nodo.label_gl   || '',
@@ -2020,7 +2022,8 @@ app.post('/import', verificarJWT, soProfesor, [
           relevance:  RELEVANCIA_VALIDA.includes(nodo.relevance) ? nodo.relevance : 'medium',
           difficulty: DIFICULTADE_VALIDA.includes(nodo.difficulty) ? nodo.difficulty : 'primary',
           autor:      nodo.autor  || req.usuario.nome   || '',
-          centro:     nodo.centro || req.usuario.centro || ''
+          centro:     nodo.centro || req.usuario.centro || '',
+          universo:   nodo.universo || 'gaia'
         }
         idiomas.forEach(i => {
           createFields += `, label_${i}: $label_${i}`
