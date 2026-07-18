@@ -1918,7 +1918,114 @@ app.put('/journeys/:id/stops', verificarJWT, [
   }
 })
 // ── FIN: rutas_journeys ──────────────────────────────
+// ── INICIO: rutas_progreso ───────────────────────────
+// Progreso do usuario nunha ruta. O indice gardado é o máximo
+// alcanzado; completada é pegañenta (unha vez true, queda).
+app.put('/journeys/:id/progreso', verificarJWT, [
+  param('id').trim().isLength({ min: 1, max: 150 }).escape(),
+  body('indice').isInt({ min: 0, max: 500 }),
+  body('completada').optional().isBoolean()
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const session = driver.session()
+  try {
+    const agora = new Date().toISOString()
+    const result = await session.run(
+      `MATCH (u:Usuario {id: $userId})
+       MATCH (j:Journey {id: $journeyId})
+       MERGE (u)-[p:PROGRESO]->(j)
+       ON CREATE SET p.indice = $indice,
+                     p.completada = $completada,
+                     p.iniciada = $agora,
+                     p.ts = $agora
+       ON MATCH SET  p.indice = CASE WHEN $indice > coalesce(p.indice, 0)
+                                     THEN $indice ELSE p.indice END,
+                     p.completada = CASE WHEN $completada THEN true
+                                         ELSE coalesce(p.completada, false) END,
+                     p.ts = $agora
+       RETURN p.indice AS indice, p.completada AS completada`,
+      {
+        userId:     req.usuario.id,
+        journeyId:  req.params.id,
+        indice:     req.body.indice,
+        completada: req.body.completada === true,
+        agora
+      }
+    )
+    if (result.records.length === 0) {
+      return res.status(404).json({ error: 'Ruta ou usuario non atopados' })
+    }
+    const r = result.records[0]
+    res.json({
+      ok: true,
+      indice:     n4num(r.get('indice')),
+      completada: r.get('completada') === true
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
 
+app.get('/journeys/:id/progreso', verificarJWT, [
+  param('id').trim().isLength({ min: 1, max: 150 }).escape()
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const session = driver.session()
+  try {
+    const result = await session.run(
+      `MATCH (u:Usuario {id: $userId})-[p:PROGRESO]->(j:Journey {id: $journeyId})
+       RETURN p.indice AS indice, p.completada AS completada, p.iniciada AS iniciada`,
+      { userId: req.usuario.id, journeyId: req.params.id }
+    )
+    if (result.records.length === 0) {
+      return res.json({ indice: 0, completada: false, iniciada: null })
+    }
+    const r = result.records[0]
+    res.json({
+      indice:     n4num(r.get('indice')),
+      completada: r.get('completada') === true,
+      iniciada:   r.get('iniciada') || null
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+
+// Todas as rutas con progreso do usuario (para a portada diaria)
+app.get('/progreso/rutas', verificarJWT, async (req, res) => {
+  const session = driver.session()
+  try {
+    const result = await session.run(
+      `MATCH (u:Usuario {id: $userId})-[p:PROGRESO]->(j:Journey)
+       OPTIONAL MATCH (j)-[s:HAS_STOP]->(:Node)
+       WITH j, p, count(s) AS totalPasos
+       RETURN j.id AS id, j.label_gl AS label, j.icono AS icono,
+              p.indice AS indice, p.completada AS completada, p.ts AS ts,
+              totalPasos
+       ORDER BY p.ts DESC`,
+      { userId: req.usuario.id }
+    )
+    const rutas = result.records.map(r => ({
+      id:         r.get('id'),
+      label:      r.get('label'),
+      icono:      r.get('icono') || '📚',
+      indice:     n4num(r.get('indice')),
+      totalPasos: n4num(r.get('totalPasos')),
+      completada: r.get('completada') === true,
+      ts:         r.get('ts')
+    }))
+    res.json({ total: rutas.length, rutas })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+// ── FIN: rutas_progreso ──────────────────────────────
 // ── INICIO: rutas_config ─────────────────────────────
 app.get('/config/:key', [
   param('key').trim().isLength({ min: 1, max: 50 }).escape()
