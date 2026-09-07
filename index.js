@@ -2105,6 +2105,50 @@ app.post('/config/idiomas', verificarJWT, soProfesor, [
 })
 // ── FIN: rutas_config ────────────────────────────────
 
+// ── INICIO: rutas_cartas ─────────────────────────────
+// Cartas coleccionables do neno. A DEFINICIÓN das cartas vive no frontend
+// (src/data/cartas.json); aquí só se garda QUE cartas ten cada usuario,
+// como lista de ids en u.cartas. Idempotente: gardar dúas veces a mesma
+// carta devolve nova:false e non duplica.
+app.get('/cartas', verificarJWT, async (req, res) => {
+  const session = driver.session()
+  try {
+    const r = await session.run(
+      'MATCH (u:Usuario {id: $id}) RETURN coalesce(u.cartas, []) AS cartas',
+      { id: req.usuario.id }
+    )
+    res.json({ cartas: r.records[0]?.get('cartas') || [] })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+
+app.post('/cartas/:id', verificarJWT, [
+  param('id').trim().matches(/^[a-z0-9_]{2,60}$/).withMessage('Id de carta inválido')
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const session = driver.session()
+  try {
+    const r = await session.run(
+      `MATCH (u:Usuario {id: $id})
+       WITH u, coalesce(u.cartas, []) AS antes
+       SET u.cartas = CASE WHEN $carta IN antes THEN antes ELSE antes + $carta END
+       RETURN ($carta IN antes) AS xaTina, u.cartas AS cartas`,
+      { id: req.usuario.id, carta: req.params.id }
+    )
+    const rec = r.records[0]
+    if (!rec) return res.status(404).json({ error: 'Usuario non atopado' })
+    res.json({ ok: true, nova: !rec.get('xaTina'), cartas: rec.get('cartas') })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+// ── FIN: rutas_cartas ────────────────────────────────
+
 // ── INICIO: ruta_import_bulk ─────────────────────────
 app.post('/import', verificarJWT, soProfesor, [
   body('nodos').optional().isArray(),
