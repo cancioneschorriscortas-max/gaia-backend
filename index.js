@@ -438,10 +438,18 @@ app.post('/auth/login', limitAuth, [
   try {
     const { nome, centro = '', contrasinal } = req.body
 
-    const result = await session.run(
+    let result = await session.run(
       'MATCH (u:Usuario {nome: $nome, centro: $centro}) RETURN u',
       { nome, centro }
     )
+    // O formulario di que o centro é OPCIONAL, pero o usuario rexistrouse
+    // cun centro. Se non cadra e só hai UNHA persoa con ese nome, é ela:
+    // o contrasinal segue sendo obrigatorio, así que non se abre ningunha
+    // porta. Se hai varias co mesmo nome, faille falla o centro.
+    if (result.records.length === 0) {
+      const porNome = await session.run('MATCH (u:Usuario {nome: $nome}) RETURN u', { nome })
+      if (porNome.records.length === 1) result = porNome
+    }
     if (result.records.length === 0) {
       return res.status(401).json({ error: 'Credenciais incorrectas' })
     }
@@ -1726,10 +1734,11 @@ app.get('/journeys/:id', [
       .filter(r => r.get('n'))
       .map(r => {
         const n = r.get('n').properties
-        return {
-          order: r.get('order'),
-          nodo:  { id: n.id, label_gl: n.label_gl, type: n.type, difficulty: n.difficulty }
-        }
+        // Etiqueta en TODOS os idiomas activos: a senda e a portada do neno
+        // pintan `label_${idioma}` e antes só chegaba a galega.
+        const nodo = { id: n.id, label_gl: n.label_gl, type: n.type, difficulty: n.difficulty }
+        idiomas.forEach(i => { nodo[`label_${i}`] = n[`label_${i}`] || '' })
+        return { order: r.get('order'), nodo }
       })
     res.json({
       id: j.id, label, description,
@@ -1999,11 +2008,12 @@ app.get('/journeys/:id/progreso', verificarJWT, [
 app.get('/progreso/rutas', verificarJWT, async (req, res) => {
   const session = driver.session()
   try {
+    const idiomas = await getIdiomasActivos(session)
     const result = await session.run(
       `MATCH (u:Usuario {id: $userId})-[p:PROGRESO]->(j:Journey)
        OPTIONAL MATCH (j)-[s:HAS_STOP]->(:Node)
        WITH j, p, count(s) AS totalPasos
-       RETURN j.id AS id, j.label_gl AS label, j.icono AS icono,
+       RETURN j, j.id AS id, j.label_gl AS label, j.icono AS icono,
               p.indice AS indice, p.completada AS completada, p.ts AS ts,
               totalPasos
        ORDER BY p.ts DESC`,
@@ -2011,7 +2021,10 @@ app.get('/progreso/rutas', verificarJWT, async (req, res) => {
     )
     const rutas = result.records.map(r => ({
       id:         r.get('id'),
-      label:      r.get('label'),
+      label:      r.get('label'),                       // compatibilidade: string en galego
+      // `label_${idioma}` en cada ruta, como fai /journeys/:id, para que a
+      // portada do neno poida titular a ruta no idioma do usuario.
+      ...Object.fromEntries(idiomas.map(i => [`label_${i}`, r.get('j').properties[`label_${i}`] || ''])),
       icono:      r.get('icono') || '📚',
       indice:     n4num(r.get('indice')),
       totalPasos: n4num(r.get('totalPasos')),
@@ -2372,17 +2385,46 @@ app.post('/avaliar-reto', limitLua, [
     }
     // ── FIN: control_limites_retos ───────────────────
 
-    const { pregunta, resposta, nivel, idioma, nodoLabel } = req.body
+    // Os campos chegan HTML-escapados polo validador (&#x27; &amp; …); ao
+    // modelo hai que darllos como os escribiu o alumno.
+    const desescapar = (s) => String(s)
+      .replace(/&#x27;/g, "'").replace(/&#x2F;/g, '/').replace(/&#96;/g, '`')
+      .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    const pregunta  = desescapar(req.body.pregunta)
+    const resposta  = desescapar(req.body.resposta)
+    const nodoLabel = desescapar(req.body.nodoLabel)
+    const { nivel, idioma } = req.body
 
-  const promptAvaliacion = `Avalía en ${idioma} a resposta dun estudante.
+    // ── INICIO: voz_de_lua_por_nivel ─────────────────
+    // A avaliación lea un NENO de primaria: sen "bioloxía", sen
+    // "estrutura reprodutiva", sen "demostra coñecemento". Lúa fala
+    // como quen explica na cociña. E en galego normativo.
+    const NOME_IDIOMA = { gl: 'galego', es: 'castelán', en: 'inglés' }
+    const VOZ_LUA = {
+      primary: `Es Lúa, a guía dun universo de coñecemento para nenos e nenas de 8 a 10 anos.
+Fálalle directamente ao neno ("ti"), con agarimo e sen paternalismo. Frases curtas: como moito DÚAS por campo.
+Nada de tecnicismos nin de palabras de exame ("demostra", "coñecemento", "estrutura", "bioloxía"): explícao como llo explicarías a un neno na cociña.
+Se fallou, non lle deas a resposta enteira: en "pista" dálle unha pista para que a atope el.
+Se acertou, "mellorar" pode ser unha soa frase alegre ou unha curiosidade pequena, nunca un reproche.`,
+      secondary: `Es Lúa, a guía dun universo de coñecemento. Fálalle a un alumno de instituto: claro, directo, sen condescendencia. Como moito TRES frases por campo.`,
+      expert: `Es Lúa, a guía dun universo de coñecemento. Avalía como un profesor universitario esixente pero xusto: precisión por riba de todo, sen rodeos.`
+    }
+    const REGRA_IDIOMA = idioma === 'gl'
+      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina". Cero castelanismos.'
+      : `Escribe en ${NOME_IDIOMA[idioma] || idioma}.`
+    // ── FIN: voz_de_lua_por_nivel ────────────────────
+
+  const promptAvaliacion = `${VOZ_LUA[nivel] || VOZ_LUA.primary}
+${REGRA_IDIOMA}
+
 Nodo: ${nodoLabel} | Nivel: ${nivel}
 Pregunta: ${pregunta}
 Resposta do estudante: ${resposta}
 
-IMPORTANTE: Se a pregunta é de opción múltiple (A/B/C) e o estudante escribe a letra ou o texto correcto, puntúa entre 70-100.
+IMPORTANTE: Se a pregunta é de opción múltiple (a/b/c) e o estudante escribe a letra ou o texto correcto, puntúa entre 70-100.
 Sé xeneroso na avaliación — premia o coñecemento, non a redacción.
 
-JSON sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}`
+Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}`
     // ── FIN: prompt_avaliacion_optimizado ────────────
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2402,7 +2444,10 @@ JSON sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...
     const data    = await response.json()
     const texto   = data.content[0].text.trim()
     const clean   = texto.replace(/```json|```/g, '').trim()
-    const resultado = JSON.parse(clean)
+    // Queda co primeiro obxecto JSON aínda que o modelo engada algo arredor.
+    const bloque  = clean.match(/\{[\s\S]*\}/)
+    const resultado = JSON.parse(bloque ? bloque[0] : clean)
+    resultado.puntos = Math.max(0, Math.min(100, Math.round(Number(resultado.puntos) || 0)))
 
     // Incrementar contador só se a avaliación foi exitosa
     await incrementarContadorIA(session, userId, 'retos')
