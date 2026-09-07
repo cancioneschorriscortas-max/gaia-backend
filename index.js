@@ -2410,7 +2410,7 @@ Se acertou, "mellorar" pode ser unha soa frase alegre ou unha curiosidade pequen
       expert: `Es Lúa, a guía dun universo de coñecemento. Avalía como un profesor universitario esixente pero xusto: precisión por riba de todo, sen rodeos.`
     }
     const REGRA_IDIOMA = idioma === 'gl'
-      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina". Cero castelanismos.'
+      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina", "dourado" e non "dorado". Cero castelanismos.'
       : `Escribe en ${NOME_IDIOMA[idioma] || idioma}.`
     // ── FIN: voz_de_lua_por_nivel ────────────────────
 
