@@ -1071,6 +1071,39 @@ app.get('/test/meu', verificarJWT, async (req, res) => {
     await session.close()
   }
 })
+// ── INICIO: test_gardar ──────────────────────────────
+// POST /test/gardar — garda o resultado do test de oficios no perfil do usuario
+// (un test por usuario: o novo substitúe o anterior). Forma de datos = a que le /test/meu.
+// Faltaba: o frontend (PanelOberonTest) chamábao desde maio e devolvía 404, así que
+// ningún test se gardaba. Borrador orixinal do dono: 04_endpoints_test_gardar.js.
+app.post('/test/gardar', verificarJWT, [
+  body('perfil').isObject().withMessage('perfil obrigatorio'),
+  body('top').isArray().withMessage('top obrigatorio')
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const session = driver.session()
+  try {
+    const { perfil, top } = req.body
+    const userId = req.usuario.id
+    const ts = new Date().toISOString()
+    await session.run(
+      `MATCH (u:Usuario {id: $userId})-[:FIXO_TEST]->(t:TestResult) DETACH DELETE t`,
+      { userId }
+    )
+    await session.run(
+      `MATCH (u:Usuario {id: $userId})
+       CREATE (t:TestResult { id: randomUUID(), perfil: $perfil, top: $top, ts: $ts })
+       CREATE (u)-[:FIXO_TEST]->(t)`,
+      { userId, perfil: JSON.stringify(perfil), top: JSON.stringify(top), ts }
+    )
+    res.json({ ok: true, ts })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+// ── FIN: test_gardar ─────────────────────────────────
 // ── INICIO: ruta_listar_nodos ────────────────────────
 app.get('/nodos', async (req, res) => {
   const session = driver.session()
