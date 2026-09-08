@@ -1730,6 +1730,27 @@ app.get('/journeys', async (req, res) => {
   }
 })
 
+// Ids dos nodos que son parada dalgunha ruta visible (para o "modo camiños" do mapa).
+// Vai ANTES de /journeys/:id para que 'nodos' non se tome por un id de ruta.
+app.get('/journeys/nodos', async (req, res) => {
+  const session = driver.session()
+  try {
+    let rol = null
+    const cab = req.headers['authorization']
+    if (cab?.startsWith('Bearer ')) {
+      try { rol = jwt.verify(cab.split(' ')[1], JWT_SECRET).rol } catch (e) {}
+    }
+    const filtro = rol === 'profesor' ? '' :
+      ` WHERE coalesce(j.visibility, 'private') IN ['public', 'featured'] AND coalesce(j.status, 'draft') = 'published'`
+    const r = await session.run(`MATCH (j:Journey)-[:HAS_STOP]->(n:Node)${filtro} RETURN DISTINCT n.id AS id`)
+    res.json({ ids: r.records.map(x => x.get('id')) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+
 app.get('/journeys/:id', [
   param('id').trim().isLength({ min: 1, max: 150 }).escape()
 ], async (req, res) => {
