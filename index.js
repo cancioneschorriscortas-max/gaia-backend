@@ -1258,8 +1258,16 @@ app.get('/nodo/:id/journeys', [
   const session = driver.session()
   try {
     const idiomas = await getIdiomasActivos(session)
+    // Mesma visibilidade ca /journeys: quen non é profesor só ve as publicadas.
+    let rol = null
+    const cab = req.headers['authorization']
+    if (cab?.startsWith('Bearer ')) {
+      try { rol = jwt.verify(cab.split(' ')[1], JWT_SECRET).rol } catch (e) {}
+    }
+    const filtro = rol === 'profesor' ? '' :
+      ` WHERE coalesce(j.visibility, 'private') IN ['public', 'featured'] AND coalesce(j.status, 'draft') = 'published'`
     const result  = await session.run(
-      `MATCH (j:Journey)-[:HAS_STOP]->(n:Node {id: $id}) RETURN j`,
+      `MATCH (j:Journey)-[:HAS_STOP]->(n:Node {id: $id})${filtro} RETURN j`,
       { id: req.params.id }
     )
     const journeys = result.records.map(r => {
