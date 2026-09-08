@@ -3093,6 +3093,38 @@ app.post('/envio/:id/:accion', verificarJWT, soProfesor, async (req, res) => {
 // ── FIN: accion_envio ────────────────────────────────
 
 // ── INICIO: alumnos_centro ───────────────────────────
+// Camiños dun alumno, un a un (para o detalle no panel do profesor)
+app.get('/centro/:centro/alumnos/:id/rutas', verificarJWT, soProfesor, [
+  param('id').trim().isLength({ min: 1, max: 150 }).escape()
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const session = driver.session()
+  try {
+    const idiomas = await getIdiomasActivos(session)
+    const result = await session.run(
+      `MATCH (u:Usuario {id: $id, centro: $centro})-[p:PROGRESO]->(j:Journey)
+       OPTIONAL MATCH (j)-[s:HAS_STOP]->(:Node)
+       WITH j, p, count(s) AS totalPasos
+       RETURN j, p.indice AS indice, p.completada AS completada, p.ts AS ts, totalPasos
+       ORDER BY p.ts DESC`,
+      { id: req.params.id, centro: decodeURIComponent(req.params.centro) }
+    )
+    const rutas = result.records.map(r => {
+      const jn = r.get('j').properties
+      const fila = { id: jn.id, icono: jn.icono || '📚', level: jn.level || 'primary',
+                     indice: n4num(r.get('indice')), totalPasos: n4num(r.get('totalPasos')),
+                     completada: r.get('completada') === true, ts: r.get('ts') }
+      idiomas.forEach(i => { fila[`label_${i}`] = jn[`label_${i}`] || '' })
+      return fila
+    })
+    res.json({ rutas })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+
 app.get('/centro/:centro/alumnos', verificarJWT, soProfesor, async (req, res) => {
   const session = driver.session()
   try {
