@@ -3187,6 +3187,63 @@ app.get('/centro/:centro/alumnos/:id/rutas', verificarJWT, soProfesor, [
   }
 })
 
+// ── INICIO: centro_semana ────────────────────────────
+// GET /centro/:centro/semana — resumo dos últimos 7 días para o profesor:
+// alumnos activos, camiños completados, retos respondidos (e nota media), XP gañados,
+// actividade por día e os últimos camiños completados. Só le; unha consulta por métrica.
+app.get('/centro/:centro/semana', verificarJWT, soProfesor, [
+  param('centro').trim().isLength({ min: 1, max: 100 })
+], async (req, res) => {
+  if (!validar(req, res)) return
+  const centro = decodeURIComponent(req.params.centro)
+  const desde = new Date(Date.now() - 7 * 864e5).toISOString()
+  const session = driver.session()
+  try {
+    const q = (cypher, params) => session.run(cypher, { centro, desde, ...params })
+    const activos = await q(
+      `MATCH (u:Usuario {centro: $centro}) WHERE u.rol = 'alumno'
+       OPTIONAL MATCH (u)-[:GAÑOU]->(e:XPEvento) WHERE e.ts >= $desde
+       OPTIONAL MATCH (u)-[p:PROGRESO]->(:Journey) WHERE p.ts >= $desde
+       WITH u, count(e) AS ne, count(p) AS np
+       RETURN count(CASE WHEN ne + np > 0 THEN 1 END) AS activos, count(u) AS total`)
+    const rutas = await q(
+      `MATCH (u:Usuario {centro: $centro})-[p:PROGRESO]->(j:Journey)
+       WHERE u.rol = 'alumno' AND p.completada = true AND p.ts >= $desde
+       RETURN u.nome AS nome, coalesce(j.label_gl, j.id) AS ruta, j.icono AS icono, p.ts AS ts
+       ORDER BY p.ts DESC LIMIT 20`)
+    const retos = await q(
+      `MATCH (u:Usuario {centro: $centro})-[:RESPONDEU]->(r:RetoRespondido)
+       WHERE u.rol = 'alumno' AND r.data >= $desde
+       RETURN count(r) AS n, avg(r.puntos) AS media`)
+    const xp = await q(
+      `MATCH (u:Usuario {centro: $centro})-[:GAÑOU]->(e:XPEvento)
+       WHERE u.rol = 'alumno' AND e.ts >= $desde
+       RETURN sum(e.cantidade) AS xp, collect(substring(e.ts, 0, 10)) AS dias`)
+    const n = (v) => (v && typeof v.toNumber === 'function') ? v.toNumber() : (Number(v) || 0)
+    const a = activos.records[0], r = retos.records[0], x = xp.records[0]
+    // Actividade por día: 7 cubos, do máis antigo ao de hoxe
+    const porDia = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10)
+      porDia.push({ dia: d, eventos: 0 })
+    }
+    for (const d of (x?.get('dias') || [])) { const c = porDia.find(p => p.dia === d); if (c) c.eventos++ }
+    res.json({
+      desde,
+      alumnosActivos: n(a?.get('activos')), alumnosTotal: n(a?.get('total')),
+      rutasCompletadas: rutas.records.length,
+      ultimasRutas: rutas.records.map(rec => ({ nome: rec.get('nome'), ruta: rec.get('ruta'), icono: rec.get('icono') || '', ts: rec.get('ts') })),
+      retos: n(r?.get('n')), retosMedia: r?.get('media') != null ? Math.round(Number(r.get('media'))) : null,
+      xp: n(x?.get('xp')),
+      porDia
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+// ── FIN: centro_semana ───────────────────────────────
 app.get('/centro/:centro/alumnos', verificarJWT, soProfesor, async (req, res) => {
   const session = driver.session()
   try {
