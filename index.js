@@ -2531,8 +2531,17 @@ Se acertou, "mellorar" pode ser unha soa frase alegre ou unha curiosidade pequen
       expert: `Es Lúa, a guía dun universo de coñecemento. Avalía como un profesor universitario esixente pero xusto: precisión por riba de todo, sen rodeos.`
     }
     const REGRA_IDIOMA = idioma === 'gl'
-      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina", "dourado" e non "dorado". Cero castelanismos.'
+      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina", "dourado" e non "dorado", "lembra" e non "recorda", "afonda/afondar" e non "profunda/profundizar", "diminución" e non "disminución", "morren" e non "moren". Sen signos de interrogación nin exclamación invertidos (¿ ¡). Cero castelanismos.'
       : `Escribe en ${NOME_IDIOMA[idioma] || idioma}.`
+    // Rigor por nivel: en primaria prémiase o coñecemento; en secundaria e experto os erros
+    // de concepto e as cifras erradas baixan a nota de verdade (antes o mesmo "sé xeneroso"
+    // valía para todos e o modelo daba por bo un cálculo errado).
+    const RIGOR = {
+      primary: `IMPORTANTE: Se a pregunta é de opción múltiple (a/b/c) e o estudante escribe a letra ou o texto correcto, puntúa entre 70-100.
+Sé xeneroso na avaliación — premia o coñecemento, non a redacción.`,
+      secondary: `Puntúa con criterio: 90 ou máis só se todo está ben e xustificado; un erro de concepto ou unha cifra errada baixa a nota claramente, e con dous ou máis erros non pasa de 45. Se a pregunta ten varias partes e faltan algunhas, dío e non pases de 70. Se todo está ben, 85 ou máis: non inventes matices para restar puntos.`,
+      expert: `Esixe precisión: unha cifra errada ou un concepto confundido non pasan de 40. Unha resposta vaga que non usa os conceptos que a propia pregunta nomea (por exemplo "actividade de auga" se a pregunta a pide) tampouco pasa de 40, aínda que non diga nada falso. 90 ou máis cunha resposta completa, correcta e ben razoada: nese caso non inventes matices para restar puntos; un dato correcto dentro do rango habitual non é un erro.`
+    }
     // ── FIN: voz_de_lua_por_nivel ────────────────────
 
   const promptAvaliacion = `${VOZ_LUA[nivel] || VOZ_LUA.primary}
@@ -2542,8 +2551,9 @@ Nodo: ${nodoLabel} | Nivel: ${nivel}
 Pregunta: ${pregunta}
 Resposta do estudante: ${resposta}
 
-IMPORTANTE: Se a pregunta é de opción múltiple (a/b/c) e o estudante escribe a letra ou o texto correcto, puntúa entre 70-100.
-Sé xeneroso na avaliación — premia o coñecemento, non a redacción.
+${RIGOR[nivel] || RIGOR.primary}
+Antes de puntuar, resolve ti a pregunta (cálculos incluídos) e compara coa resposta: nunca deas por bo un número ou un dato que non coincida co teu.
+En "acertou" pon só o que estea realmente ben; se non hai nada, dío nunha frase curta e amable.
 
 Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}`
     // ── FIN: prompt_avaliacion_optimizado ────────────
@@ -2557,7 +2567,7 @@ Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou
       },
       body: JSON.stringify({
         model:      'claude-haiku-4-5-20251001',
-        max_tokens: 400,
+        max_tokens: nivel === 'expert' ? 600 : 400,   // o experto escribe máis en "mellorar"
         messages:   [{ role: 'user', content: promptAvaliacion }]
       })
     })
