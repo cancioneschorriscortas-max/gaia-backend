@@ -1670,6 +1670,21 @@ app.get('/journeys', async (req, res) => {
     let queryStr  = 'MATCH (j:Journey)'
     const params  = {}
     const conds   = []
+
+    // ── INICIO: visibilidade_por_rol ─────────────────
+    // Os nenos (e quen non teña conta) só ven as rutas PUBLICADAS e
+    // públicas. O profesor ve todas, incluídos os borradores, porque
+    // é quen as prepara. O token é opcional aquí: se non vén ou non
+    // vale, trátase como visitante.
+    let rol = null
+    const cab = req.headers['authorization']
+    if (cab?.startsWith('Bearer ')) {
+      try { rol = jwt.verify(cab.split(' ')[1], JWT_SECRET).rol } catch (e) {}
+    }
+    if (rol !== 'profesor') {
+      conds.push(`coalesce(j.visibility, 'private') IN ['public', 'featured'] AND coalesce(j.status, 'draft') = 'published'`)
+    }
+    // ── FIN: visibilidade_por_rol ────────────────────
     if (level && DIFICULTADE_VALIDA.includes(level)) {
       conds.push('j.level = $level'); params.level = level
     }
