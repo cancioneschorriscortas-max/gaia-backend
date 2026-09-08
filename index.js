@@ -3101,8 +3101,12 @@ app.get('/centro/:centro/alumnos', verificarJWT, soProfesor, async (req, res) =>
       `MATCH (u:Usuario {centro: $centro})
        WHERE u.rol = 'alumno'
        OPTIONAL MATCH (u)-[:RESPONDEU]->(r:RetoRespondido)
-       RETURN u, count(r) AS totalRetos,
-              sum(r.puntos) AS sumaPuntos
+       WITH u, count(r) AS totalRetos, sum(r.puntos) AS sumaPuntos
+       OPTIONAL MATCH (u)-[p:PROGRESO]->(:Journey)
+       RETURN u, totalRetos, sumaPuntos,
+              count(p) AS rutasEmpezadas,
+              sum(CASE WHEN p.completada = true THEN 1 ELSE 0 END) AS rutasCompletadas,
+              size(coalesce(u.cartas, [])) AS cartas
        ORDER BY u.curso, u.nome`,
       { centro }
     )
@@ -3111,6 +3115,10 @@ app.get('/centro/:centro/alumnos', verificarJWT, soProfesor, async (req, res) =>
       const totalRetos = rec.get('totalRetos')?.toNumber?.() || 0
       const sumaPuntos = rec.get('sumaPuntos')?.toNumber?.() || 0
       return {
+  // Camiños do neno (PROGRESO) e cartas: o profesor ve por onde vai cada un
+  rutasEmpezadas:      n4num(rec.get('rutasEmpezadas')),
+  rutasCompletadas:    n4num(rec.get('rutasCompletadas')),
+  cartas:              n4num(rec.get('cartas')),
   id:                  u.id,
   nome:                u.nome,
   curso:               u.curso               || 'outro',
