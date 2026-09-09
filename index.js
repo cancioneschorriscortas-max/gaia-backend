@@ -2566,7 +2566,8 @@ Resposta do estudante: ${resposta}
 ${referencia ? `Texto da parada que leu o alumno (é a referencia do que se espera; non lle esixas máis do que di aquí): ${referencia}\n` : ''}
 ${RIGOR[nivel] || RIGOR.primary}
 Antes de puntuar, resolve ti a pregunta (cálculos incluídos) e compara coa resposta: nunca deas por bo un número ou un dato que non coincida co teu.
-En "acertou" pon só o que estea realmente ben; se non hai nada, dío nunha frase curta e amable.
+En "acertou" pon só o que a resposta DI e estea realmente ben: nunca lle atribúas ideas que non escribiu; se non hai nada, dío nunha frase curta e amable.
+${nivel !== 'primary' ? 'Se a resposta dá unha cifra distinta da correcta, a nota non pasa de 50 aínda que o resto estea ben.' : ''}
 
 Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}
 ${idioma !== 'gl' ? REGRA_IDIOMA : ''}`
