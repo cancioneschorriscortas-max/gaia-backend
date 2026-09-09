@@ -2542,7 +2542,7 @@ Se acertou, "mellorar" pode ser unha soa frase alegre ou unha curiosidade pequen
       expert: `Es Lúa, a guía dun universo de coñecemento. Avalía como un profesor universitario esixente pero xusto: precisión por riba de todo, sen rodeos.`
     }
     const REGRA_IDIOMA = idioma === 'gl'
-      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina", "dourado" e non "dorado", "lembra" e non "recorda", "afonda/afondar" e non "profunda/profundizar", "diminución" e non "disminución", "morren" e non "moren". Sen signos de interrogación nin exclamación invertidos (¿ ¡). Cero castelanismos.'
+      ? 'Escribe en galego normativo (RAG): "gran" e non "grano", "lévedo" e non "levadura", "fariña" e non "harina", "dourado" e non "dorado", "lembra" e non "recorda", "afonda/afondar" e non "profunda/profundizar/profundar", "diminución" e non "disminución", "morren" e non "moren". Sen signos de interrogación nin exclamación invertidos (¿ ¡). Cero castelanismos.'
       : idioma === 'es'
         ? 'Escribe TODOS los textos del JSON (acertou, mellorar, pista) en castellano, nunca en gallego ni en inglés. Mantén las claves del JSON exactamente como están (puntos, acertou, mellorar, pista).'
         : 'Write ALL the text values of the JSON (acertou, mellorar, pista) in English, never in Galician or Spanish. Keep the JSON keys exactly as given (puntos, acertou, mellorar, pista).'
