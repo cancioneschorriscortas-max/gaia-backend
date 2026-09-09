@@ -2,6 +2,9 @@ require('dotenv').config()
 const express = require('express')
 const neo4j = require('neo4j-driver')
 const slugify = require('slugify')
+// Id de nodo a partir dunha etiqueta: sen acentos nin "ñ" (slugify strict comíaos: "A castaña" → "a_castaa").
+const idDesdeEtiqueta = (etiqueta) => String(etiqueta || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { body, param, query, validationResult } = require('express-validator')
@@ -2815,7 +2818,8 @@ app.put('/envio/:id/resolver', verificarJWT, soProfesor, [
       if (envioResult.records.length > 0) {
         const e = envioResult.records[0].get('e').properties
         if (!e.nodo_existente && e.label_gl) {
-          const nodoId = slugify(e.label_gl, {
+          // slugify en modo strict comía o "ñ" ("A castaña" → "a_castaa"): normalízase antes.
+          const nodoId = slugify(String(e.label_gl).replace(/ñ/g, 'n').replace(/Ñ/g, 'N'), {
             lower: true, strict: true, locale: 'es', replacement: '_'
           })
           const existe = await session.run(
@@ -3078,9 +3082,17 @@ app.get('/envios-pendentes', verificarJWT, soProfesor, async (req, res) => {
       MATCH (e:Submission {status: 'pending'})
       RETURN e ORDER BY e.created_at DESC
     `)
+    // `created_at` é un DateTime de Neo4j (obxecto con {low,high}); sen converter, o frontend
+    // pintaba "Invalid Date". Devólvese tamén como `data` en ISO, que é o campo que le a pantalla.
+    const aIso = (dt) => {
+      if (!dt || typeof dt !== 'object' || dt.year == null) return typeof dt === 'string' ? dt : null
+      const n = (v) => (v && typeof v === 'object' && 'low' in v) ? v.low : Number(v)
+      return new Date(Date.UTC(n(dt.year), n(dt.month) - 1, n(dt.day), n(dt.hour), n(dt.minute), n(dt.second))).toISOString()
+    }
     const envios = result.records.map(r => {
       const e = r.get('e').properties
-      return { ...e, relacions: e.relacions ? JSON.parse(e.relacions) : [] }
+      const data = aIso(e.created_at) || e.data || null
+      return { ...e, created_at: data, data, relacions: e.relacions ? JSON.parse(e.relacions) : [] }
     })
     res.json({ envios })
   } catch(err) {
@@ -3109,29 +3121,35 @@ app.get('/historial-profesor', verificarJWT, soProfesor, async (req, res) => {
 // ── FIN: historial_profesor ──────────────────────────
 
 // ── INICIO: accion_envio ─────────────────────────────
-app.post('/envio/:id/:accion', verificarJWT, soProfesor, async (req, res) => {
+app.post('/envio/:id/:accion', verificarJWT, soProfesor, [
+  param('id').trim().isLength({ min: 1, max: 150 }).escape(),
+  body('motivo').optional().trim().isLength({ max: 500 }).escape()
+], async (req, res) => {
+  if (!validar(req, res)) return
   const { id, accion } = req.params
   if (!['validar', 'rexeitar'].includes(accion)) {
     return res.status(400).json({ error: 'Acción non válida' })
   }
+  // Mesmo comportamento que PUT /envio/:id/resolver (o panel antigo): a nota do profesor
+  // gárdase na proposta (o alumno lea en /envios/meus) e o estado usa o mesmo vocabulario.
+  const motivo = req.body?.motivo || ''
   const session = driver.session()
   try {
+    const envioRes = await session.run(
+      'MATCH (e:Submission {id: $id}) RETURN e', { id }
+    )
+    if (envioRes.records.length === 0) {
+      return res.status(404).json({ error: 'Envío non atopado' })
+    }
+    const e = envioRes.records[0].get('e').properties
     if (accion === 'validar') {
-      const envioRes = await session.run(
-        'MATCH (e:Submission {id: $id}) RETURN e', { id }
-      )
-      if (envioRes.records.length === 0) {
-        return res.status(404).json({ error: 'Envío non atopado' })
-      }
-      const e = envioRes.records[0].get('e').properties
       if (e.nodo_existente) {
         await session.run(`
           MATCH (n:Node {id: $nid})
           SET n.autor = $autor, n.centro = $centro, n.status = 'validated'
         `, { nid: e.nodo_existente, autor: e.autor || '', centro: e.centro || '' })
       } else {
-        const nodoId = (e.label_gl || '').toLowerCase()
-          .replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+        const nodoId = idDesdeEtiqueta(e.label_gl)
         await session.run(`
           MERGE (n:Node {id: $nid})
           SET n.label = $label, n.label_gl = $label,
@@ -3145,6 +3163,20 @@ app.post('/envio/:id/:accion', verificarJWT, soProfesor, async (req, res) => {
           centro:     e.centro        || '',
           explicacion: e.explicacion_gl || ''
         })
+        // As relacións que propuxo o alumno ({ tipo, nodo_target } desde PanelEnvio) créanse
+        // ao validar; antes quedaban só na proposta e o nodo nacía solto.
+        let rels = []
+        try { rels = JSON.parse(e.relacions || '[]') } catch { rels = [] }
+        for (const rel of rels) {
+          const destino = rel.nodo_target || rel.target || rel.destino
+          if (!destino || !TIPOS_RELACION_VALIDOS.includes(rel.tipo)) continue
+          await session.run(
+            `MATCH (a:Node {id: $a}), (b:Node {id: $b})
+             MERGE (a)-[r:${rel.tipo}]->(b)
+             ON CREATE SET r.strength = 'medium', r.context_gl = '', r.context_es = '', r.context_en = ''`,
+            { a: nodoId, b: String(destino) }
+          )
+        }
       }
       await session.run(`
         CREATE (a:AccionProfesor {
@@ -3163,12 +3195,12 @@ app.post('/envio/:id/:accion', verificarJWT, soProfesor, async (req, res) => {
         })
       `, {
         profesorId: req.usuario.id,
-        desc: `Rexeitou envío ${id}`
+        desc: `Rexeitou: ${e.label_gl || e.nodo_existente}${motivo ? ' (' + motivo + ')' : ''}`
       })
     }
     await session.run(
-      'MATCH (e:Submission {id: $id}) SET e.status = $status',
-      { id, status: accion === 'validar' ? 'validated' : 'rejected' }
+      'MATCH (e:Submission {id: $id}) SET e.status = $status, e.nota_profesor = $nota, e.resolved_at = datetime()',
+      { id, status: accion === 'validar' ? 'validado' : 'rexeitado', nota: motivo }
     )
     res.json({ ok: true })
   } catch(err) {
@@ -3178,6 +3210,40 @@ app.post('/envio/:id/:accion', verificarJWT, soProfesor, async (req, res) => {
   }
 })
 // ── FIN: accion_envio ────────────────────────────────
+
+// ── INICIO: envios_meus ──────────────────────────────
+// As propostas do usuario autenticado (para que o alumno vexa se llas validaron e a nota do profe).
+app.get('/envios/meus', verificarJWT, async (req, res) => {
+  const session = driver.session()
+  try {
+    const r = await session.run(`
+      MATCH (e:Submission) WHERE e.autor = $autor OR e.autorId = $autorId
+      RETURN e ORDER BY e.created_at DESC LIMIT 50
+    `, { autor: req.usuario.nome || '', autorId: req.usuario.id || '' })
+    const aIso = (dt) => {
+      if (!dt || typeof dt !== 'object' || dt.year == null) return typeof dt === 'string' ? dt : null
+      const n = (v) => (v && typeof v === 'object' && 'low' in v) ? v.low : Number(v)
+      return new Date(Date.UTC(n(dt.year), n(dt.month) - 1, n(dt.day), n(dt.hour), n(dt.minute), n(dt.second))).toISOString()
+    }
+    const envios = r.records.map(rec => {
+      const e = rec.get('e').properties
+      const estado = e.status === 'validated' ? 'validado' : e.status === 'rejected' ? 'rexeitado' : (e.status || 'pending')
+      return {
+        id: e.id, tipo: e.nodo_existente ? 'nota' : 'nodo',
+        label_gl: e.label_gl || '', nodo_existente: e.nodo_existente || '',
+        nodo_id: !e.nodo_existente && e.label_gl ? idDesdeEtiqueta(e.label_gl) : e.nodo_existente || '',
+        estado, nota_profesor: e.nota_profesor || '',
+        data: aIso(e.created_at), resolved_at: aIso(e.resolved_at)
+      }
+    })
+    res.json({ envios })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  } finally {
+    await session.close()
+  }
+})
+// ── FIN: envios_meus ─────────────────────────────────
 
 // ── INICIO: alumnos_centro ───────────────────────────
 // Camiños dun alumno, un a un (para o detalle no panel do profesor)
