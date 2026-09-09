@@ -2568,11 +2568,11 @@ Resposta do estudante: ${resposta}
 ${referencia ? `Texto da parada que leu o alumno (é a referencia do que se espera; non lle esixas máis do que di aquí): ${referencia}\n` : ''}
 ${RIGOR[nivel] || RIGOR.primary}
 Antes de puntuar, resolve ti a pregunta (cálculos incluídos) e compara coa resposta: nunca deas por bo un número ou un dato que non coincida co teu.
-En "acertou" pon só o que a resposta DI e estea realmente ben: nunca lle atribúas ideas que non escribiu; se non hai nada, dío nunha frase curta e amable.
+En "acertou" pon só o que a resposta DI e estea realmente ben: nunca lle atribúas ideas que non escribiu. Cada acerto que nomees ten que poder citarse da RESPOSTA DO ALUMNO (nunca da pregunta nin do texto da parada): acompáñao dunha cita curta textual entre comiñas («...») tomada da resposta; se na resposta non hai ningunha frase que estea ben, dío nunha frase curta e amable e non cites nada.
 ${nivel !== 'primary' ? 'Se a resposta dá unha cifra distinta da correcta, a nota non pasa de 50 aínda que o resto estea ben.' : ''}
 
 ${nivel !== 'primary'
-    ? 'Responde SÓ con este JSON, sen texto extra nin backticks. O campo "calculo" vai PRIMEIRO e é para ti: resolve nel a pregunta (só as operacións e as cifras, en menos de 60 palabras, sen prosa) e di cales das cifras do alumno coinciden coa túa; a nota e os demais campos escríbelos DESPOIS, coherentes co que puxeches en "calculo". {"calculo":"...","puntos":75,"acertou":"...","mellorar":"...","pista":"..."}'
+    ? 'Responde SÓ con este JSON, sen texto extra nin backticks. O campo "calculo" vai PRIMEIRO e é para ti: resolve nel a pregunta (só as operacións e as cifras, en menos de 60 palabras, sen prosa) e di cales das cifras do alumno coinciden coa túa; a nota e os demais campos escríbelos DESPOIS, coherentes co que puxeches en "calculo": ningunha cifra do alumno pode aparecer como correcta en "acertou" se en "calculo" non coincide coa túa. {"calculo":"...","puntos":75,"acertou":"...","mellorar":"...","pista":"..."}'
     : 'Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}'}
 ${idioma !== 'gl' ? REGRA_IDIOMA : ''}`
     // ── FIN: prompt_avaliacion_optimizado ────────────
