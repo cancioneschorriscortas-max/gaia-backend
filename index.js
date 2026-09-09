@@ -2571,7 +2571,9 @@ Antes de puntuar, resolve ti a pregunta (cálculos incluídos) e compara coa res
 En "acertou" pon só o que a resposta DI e estea realmente ben: nunca lle atribúas ideas que non escribiu; se non hai nada, dío nunha frase curta e amable.
 ${nivel !== 'primary' ? 'Se a resposta dá unha cifra distinta da correcta, a nota non pasa de 50 aínda que o resto estea ben.' : ''}
 
-Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}
+${nivel !== 'primary'
+    ? 'Responde SÓ con este JSON, sen texto extra nin backticks. O campo "calculo" vai PRIMEIRO e é para ti: resolve nel a pregunta (só as operacións e as cifras, en menos de 60 palabras, sen prosa) e di cales das cifras do alumno coinciden coa túa; a nota e os demais campos escríbelos DESPOIS, coherentes co que puxeches en "calculo". {"calculo":"...","puntos":75,"acertou":"...","mellorar":"...","pista":"..."}'
+    : 'Responde SÓ con este JSON, sen texto extra nin backticks: {"puntos":75,"acertou":"...","mellorar":"...","pista":"..."}'}
 ${idioma !== 'gl' ? REGRA_IDIOMA : ''}`
     // ── FIN: prompt_avaliacion_optimizado ────────────
 
@@ -2584,17 +2586,20 @@ ${idioma !== 'gl' ? REGRA_IDIOMA : ''}`
       },
       body: JSON.stringify({
         model:      'claude-haiku-4-5-20251001',
-        max_tokens: nivel === 'expert' ? 600 : 400,   // o experto escribe máis en "mellorar"
+        max_tokens: nivel === 'expert' ? 1100 : nivel === 'secondary' ? 900 : 400,   // secundaria e experto levan o campo "calculo" e escriben máis en "mellorar"
         messages:   [{ role: 'user', content: promptAvaliacion }]
       })
     })
 
     const data    = await response.json()
     const texto   = data.content[0].text.trim()
-    const clean   = texto.replace(/```json|```/g, '').trim()
+    // Sen caracteres de control: o modelo mete ás veces saltos de liña dentro dos textos (JSON inválido).
+    const clean   = texto.replace(/```json|```/g, '').replace(/[\u0000-\u001f]+/g, ' ').trim()
     // Queda co primeiro obxecto JSON aínda que o modelo engada algo arredor.
     const bloque  = clean.match(/\{[\s\S]*\}/)
-    const resultado = JSON.parse(bloque ? bloque[0] : clean)
+    let resultado
+    try { resultado = JSON.parse(bloque ? bloque[0] : clean) }
+    catch (e) { console.error('avaliar-reto: JSON inválido do modelo:', (data.stop_reason || ''), clean.slice(0, 300)); throw e }
     resultado.puntos = Math.max(0, Math.min(100, Math.round(Number(resultado.puntos) || 0)))
 
     // Incrementar contador só se a avaliación foi exitosa
