@@ -1356,9 +1356,7 @@ app.post('/nodo', verificarJWT, [
   if (!validar(req, res)) return
   const session = driver.session()
   try {
-    const id = slugify(req.body.label_gl, {
-      lower: true, strict: true, locale: 'es', replacement: '_'
-    })
+    const id = idDesdeEtiqueta(req.body.label_gl)
     const existe = await session.run(
       'MATCH (n:Node {id: $id}) RETURN n', { id }
     )
@@ -1864,7 +1862,8 @@ app.post('/journeys', verificarJWT, [
       }
     }
 
-    const id    = slugify(req.body.label_gl, { lower: true, strict: true, locale: 'es', replacement: '_' })
+    // idDesdeEtiqueta e non slugify strict: "A viaxe do viño" daba "a_viaxe_do_vio" (comía o ñ).
+    const id    = idDesdeEtiqueta(req.body.label_gl)
     const existe = await session.run('MATCH (j:Journey {id: $id}) RETURN j', { id })
     if (existe.records.length > 0) {
       return res.status(409).json({ error: `Xa existe unha ruta con id "${id}"` })
@@ -2247,7 +2246,7 @@ app.post('/import', verificarJWT, soProfesor, [
         resultado.erros.push({ nodo, motivo: 'Falta label_gl' }); continue
       }
       try {
-        const id = nodo.id || slugify(nodo.label_gl, { lower: true, strict: true })
+        const id = nodo.id || idDesdeEtiqueta(nodo.label_gl)
         const existe = await session.run('MATCH (n:Node {id: $id}) RETURN n', { id })
         if (existe.records.length > 0) {
           resultado.erros.push({ id, motivo: 'Xa existe' }); continue
@@ -2819,9 +2818,7 @@ app.put('/envio/:id/resolver', verificarJWT, soProfesor, [
         const e = envioResult.records[0].get('e').properties
         if (!e.nodo_existente && e.label_gl) {
           // slugify en modo strict comía o "ñ" ("A castaña" → "a_castaa"): normalízase antes.
-          const nodoId = slugify(String(e.label_gl).replace(/ñ/g, 'n').replace(/Ñ/g, 'N'), {
-            lower: true, strict: true, locale: 'es', replacement: '_'
-          })
+          const nodoId = idDesdeEtiqueta(e.label_gl)
           const existe = await session.run(
             'MATCH (n:Node {id: $id}) RETURN n', { id: nodoId }
           )
@@ -3218,7 +3215,8 @@ app.get('/envios/meus', verificarJWT, async (req, res) => {
   try {
     const r = await session.run(`
       MATCH (e:Submission) WHERE e.autor = $autor OR e.autorId = $autorId
-      RETURN e ORDER BY e.created_at DESC LIMIT 50
+      OPTIONAL MATCH (n:Node {id: e.nodo_existente})
+      RETURN e, coalesce(n.label_gl, n.label, '') AS etiquetaNodo ORDER BY e.created_at DESC LIMIT 50
     `, { autor: req.usuario.nome || '', autorId: req.usuario.id || '' })
     const aIso = (dt) => {
       if (!dt || typeof dt !== 'object' || dt.year == null) return typeof dt === 'string' ? dt : null
@@ -3227,10 +3225,11 @@ app.get('/envios/meus', verificarJWT, async (req, res) => {
     }
     const envios = r.records.map(rec => {
       const e = rec.get('e').properties
+      const etiquetaNodo = rec.get('etiquetaNodo') || ''
       const estado = e.status === 'validated' ? 'validado' : e.status === 'rejected' ? 'rexeitado' : (e.status || 'pending')
       return {
         id: e.id, tipo: e.nodo_existente ? 'nota' : 'nodo',
-        label_gl: e.label_gl || '', nodo_existente: e.nodo_existente || '',
+        label_gl: e.label_gl || etiquetaNodo || e.nodo_existente || '', nodo_existente: e.nodo_existente || '',
         nodo_id: !e.nodo_existente && e.label_gl ? idDesdeEtiqueta(e.label_gl) : e.nodo_existente || '',
         estado, nota_profesor: e.nota_profesor || '',
         data: aIso(e.created_at), resolved_at: aIso(e.resolved_at)
