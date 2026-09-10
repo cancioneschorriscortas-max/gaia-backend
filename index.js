@@ -2479,7 +2479,7 @@ Fala en ${idioma === 'gl' ? 'galego' : idioma === 'es' ? 'castelán' : 'inglés'
 
 // ── INICIO: ruta_avaliar_reto ────────────────────────
 app.post('/avaliar-reto', limitLua, [
-  body('pregunta').trim().notEmpty().isLength({ max: 500 }).escape(),
+  body('pregunta').trim().notEmpty().isLength({ max: 1500 }).escape(),   // os retos de experto pasan dos 500 caracteres
   body('resposta').trim().notEmpty().isLength({ max: 2000 }).escape(),
   body('nivel').isIn(DIFICULTADE_VALIDA),
   body('idioma').isIn(['gl', 'es', 'en']),
@@ -2634,7 +2634,7 @@ ${idioma !== 'gl' ? REGRA_IDIOMA : ''}`
 app.post('/reto-respondido', verificarJWT, [
   body('nodoId').trim().notEmpty().isLength({ max: 150 }).escape(),
   body('nodoLabel').trim().notEmpty().isLength({ max: 150 }).escape(),
-  body('pregunta').trim().notEmpty().isLength({ max: 500 }).escape(),
+  body('pregunta').trim().notEmpty().isLength({ max: 1500 }).escape(),   // os retos de experto pasan dos 500 caracteres
   body('resposta').trim().notEmpty().isLength({ max: 2000 }).escape(),
   body('puntos').isInt({ min: 0, max: 100 }),
   body('nivel').isIn(DIFICULTADE_VALIDA),
