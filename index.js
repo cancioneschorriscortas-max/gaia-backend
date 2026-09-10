@@ -1464,6 +1464,15 @@ app.put('/nodo/:id', verificarJWT, [
       params[`reto_secondary_${i}`] = req.body[`reto_secondary_${i}`] || ''
       params[`reto_expert_${i}`]    = req.body[`reto_expert_${i}`]    || ''
     })
+    // Solución de referencia do autor por nivel (unha lingua, a do autor): o avaliador fíase dela
+    // antes ca das súas propias contas. Só se garda se vén no corpo, para que os PUT que non a
+    // coñecen (editor, seeds vellos) non a borren.
+    for (const nivel of ['primary', 'secondary', 'expert']) {
+      if (req.body[`solucion_${nivel}`] !== undefined) {
+        setClause += `, n.solucion_${nivel} = $solucion_${nivel}`
+        params[`solucion_${nivel}`] = String(req.body[`solucion_${nivel}`] || '').slice(0, 2000)
+      }
+    }
     await session.run(
       `MATCH (n:Node {id: $id}) SET ${setClause} RETURN n`, params
     )
@@ -2521,12 +2530,14 @@ app.post('/avaliar-reto', limitLua, [
     // Referencia: o texto da parada que leu o alumno (se o frontend manda nodoId). Así Lúa
     // avalía contra o que di a parada e non contra a súa opinión (p. ex. que leva a etiqueta da lonxa).
     let referencia = ''
+    let solucion   = ''   // solución de referencia escrita polo autor do reto (solucion_<nivel>), se a hai
     if (req.body.nodoId) {
       try {
-        const rr = await session.run(`MATCH (n {id: $id}) RETURN n[$campo] AS t`,
-          { id: String(req.body.nodoId).slice(0, 100), campo: `text_${nivel}_${idioma}` })
+        const rr = await session.run(`MATCH (n {id: $id}) RETURN n[$campo] AS t, n[$campoSol] AS s`,
+          { id: String(req.body.nodoId).slice(0, 100), campo: `text_${nivel}_${idioma}`, campoSol: `solucion_${nivel}` })
         referencia = String(rr.records[0]?.get('t') || '').slice(0, 1500)
-      } catch (e) { referencia = '' }
+        solucion   = String(rr.records[0]?.get('s') || '').slice(0, 2000)
+      } catch (e) { referencia = ''; solucion = '' }
     }
 
     // ── INICIO: voz_de_lua_por_nivel ─────────────────
@@ -2566,6 +2577,7 @@ Nodo: ${nodoLabel} | Nivel: ${nivel}
 Pregunta: ${pregunta}
 Resposta do estudante: ${resposta}
 ${referencia ? `Texto da parada que leu o alumno (é a referencia do que se espera; non lle esixas máis do que di aquí): ${referencia}\n` : ''}
+${solucion ? `SOLUCIÓN DE REFERENCIA escrita polo autor do reto (é fiable: as súas cifras son as correctas; se a túa conta non coincide con ela, a túa conta é a que está mal, corríxea e usa estas): ${solucion}\n` : ''}
 ${RIGOR[nivel] || RIGOR.primary}
 Antes de puntuar, resolve ti a pregunta (cálculos incluídos) e compara coa resposta: nunca deas por bo un número ou un dato que non coincida co teu.
 En "acertou" pon só o que a resposta DI e estea realmente ben: nunca lle atribúas ideas que non escribiu. Cada acerto que nomees ten que poder citarse da RESPOSTA DO ALUMNO (nunca da pregunta nin do texto da parada): acompáñao dunha cita curta textual entre comiñas («...») tomada da resposta; se na resposta non hai ningunha frase que estea ben, dío nunha frase curta e amable e non cites nada.
